@@ -1,4 +1,6 @@
-import { alertForMiscreant } from './miscreant-handling';
+import { alertForMiscreant, findMiscreant } from './miscreant-handling';
 
-const found = alertForMiscreant(['Don', 'John']);
+const people = ['Don', 'John'];
+const found = findMiscreant(people);
 console.log(found);
+alertForMiscreant(people);
