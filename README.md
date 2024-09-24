@@ -1,32 +1,10 @@
 [![Continuous Integration](https://github.com/kaiosilveira/separate-query-from-modifier-refactoring/actions/workflows/ci.yml/badge.svg)](https://github.com/kaiosilveira/separate-query-from-modifier-refactoring/actions/workflows/ci.yml)
 
-# Refactoring catalog repository template
-
-This is a quick template to help me get a new refactoring repo going.
-
-## Useful commands
-
-- Generate markdown containing a diff with patch information based on a range of commits:
-
-```bash
-yarn tools:cli generate-diff -f <first_commit_sha> -l <last_commit_sha>
-```
-
-- To generate the commit history table for the last section, including the correct links:
-
-```bash
-yarn tools:cli generate-cmt-table -r separate-query-from-modifier-refactoring
-```
-
----
-
 ℹ️ _This repository is part of my Refactoring catalog based on Fowler's book with the same title. Please see [kaiosilveira/refactoring](https://github.com/kaiosilveira/refactoring) for more details._
 
 ---
 
 # Separate Query From Modifier
-
-**Formerly: Old name**
 
 <table>
 <thead>
@@ -38,7 +16,11 @@ yarn tools:cli generate-cmt-table -r separate-query-from-modifier-refactoring
 <td>
 
 ```javascript
-result = initial.code;
+function getTotalOutstandingAndSendBill() {
+  const result = customer.invoices.reduce((total, each) => each.amount + total, 0);
+  sendBill();
+  return result;
+}
 ```
 
 </td>
@@ -46,10 +28,12 @@ result = initial.code;
 <td>
 
 ```javascript
-result = newCode();
+function totalOutstanding() {
+  return customer.invoices.reduce((total, each) => each.amount + total, 0);
+}
 
-function newCode() {
-  return 'new code';
+function sendBill() {
+  emailGateway.send(formatBill(customer));
 }
 ```
 
@@ -58,58 +42,176 @@ function newCode() {
 </tbody>
 </table>
 
-**Inverse of: [Another refactoring](https://github.com/kaiosilveira/refactoring)**
-
-**Refactoring introduction and motivation** dolore sunt deserunt proident enim excepteur et cillum duis velit dolor. Aute proident laborum officia velit culpa enim occaecat officia sunt aute labore id anim minim. Eu minim esse eiusmod enim nulla Lorem. Enim velit in minim anim anim ad duis aute ipsum voluptate do nulla. Ad tempor sint dolore et ullamco aute nulla irure sunt commodo nulla aliquip.
+Good code is about clarity. Good code looks obvious at first sight, or even pre-first sight, just by reading the name of a function. Side effects are the biggest antagonists of clarity: they cause chaos in an often uncontrolled way. This refactoring helps on bringing predictability and peace.
 
 ## Working example
 
-**Working example general explanation** proident reprehenderit mollit non voluptate ea aliquip ad ipsum anim veniam non nostrud. Cupidatat labore occaecat labore veniam incididunt pariatur elit officia. Aute nisi in nulla non dolor ullamco ut dolore do irure sit nulla incididunt enim. Cupidatat aliquip minim culpa enim. Fugiat occaecat qui nostrud nostrud eu exercitation Lorem pariatur fugiat ea consectetur pariatur irure. Officia dolore veniam duis duis eu eiusmod cupidatat laboris duis ad proident adipisicing. Minim veniam consectetur ut deserunt fugiat id incididunt reprehenderit.
+Our working example is a modest program that searches for (and alert on) the presence of miscreants. The code look likes the following:
+
+```javascript
+function setOffAlarms() {
+  console.log('Alarms have been set off!');
+}
+
+export function alertForMiscreant(people) {
+  for (const p of people) {
+    if (p === 'Don') {
+      setOffAlarms();
+      return 'Don';
+    }
+    if (p === 'John') {
+      setOffAlarms();
+      return 'John';
+    }
+  }
+  return '';
+}
+```
+
+The function we want to refactor here is `alertForMiscreant`, mainly because it has two jobs:
+
+- Finding pre-determined miscreants in the least of people
+- setting off the alarms when these people are found
+
+As the refactoring name implies, we want to separate "querying" from "modifying" (in this case, causing a side effect in the form of setting off alarms).
 
 ### Test suite
 
-Occaecat et incididunt aliquip ex id dolore. Et excepteur et ea aute culpa fugiat consectetur veniam aliqua. Adipisicing amet reprehenderit elit qui.
+The test suite covers miscreant detection and alarm configuration:
 
 ```javascript
-describe('functionBeingRefactored', () => {
-  it('should work', () => {
-    expect(0).toEqual(1);
+describe('alertForMiscreant', () => {
+  const spy = jest.spyOn(console, 'log');
+
+  beforeEach(() => spy.mockClear());
+
+  it('should set off alarms for Don', () => {
+    const result = alertForMiscreant(['Don']);
+    expect(result).toBe('Don');
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('should set off alarms for John', () => {
+    const reuslt = alertForMiscreant(['John']);
+    expect(reuslt).toBe('John');
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('should not set off alarms for other people', () => {
+    const result = alertForMiscreant(['Alice']);
+    expect(result).toBe('');
+    expect(spy).not.toHaveBeenCalled();
   });
 });
 ```
 
-Magna ut tempor et ut elit culpa id minim Lorem aliqua laboris aliqua dolor. Irure mollit ad in et enim consequat cillum voluptate et amet esse. Fugiat incididunt ea nulla cupidatat magna enim adipisicing consequat aliquip commodo elit et. Mollit aute irure consequat sunt. Dolor consequat elit voluptate aute duis qui eu do veniam laborum elit quis.
+With that in place, we are ready to go.
 
 ### Steps
 
-**Step 1 description** mollit eu nulla mollit irure sint proident sint ipsum deserunt ad consectetur laborum incididunt aliqua. Officia occaecat deserunt in aute veniam sunt ad fugiat culpa sunt velit nulla. Pariatur anim sit minim sit duis mollit.
+We start by copying the `alertForMiscreant` into a new function named `findMiscreant`:
 
 ```diff
-diff --git a/src/price-order/index.js b/src/price-order/index.js
-@@ -3,6 +3,11 @@
--module.exports = old;
-+module.exports = new;
+@@ -15,3 +15,17 @@ export function alertForMiscreant(people) {
+   }
+   return '';
+ }
++
++export function findMiscreant(people) {
++  for (const p of people) {
++    if (p === 'Don') {
++      setOffAlarms();
++      return 'Don';
++    }
++    if (p === 'John') {
++      setOffAlarms();
++      return 'John';
++    }
++  }
++  return '';
++}
 ```
 
-**Step n description** mollit eu nulla mollit irure sint proident sint ipsum deserunt ad consectetur laborum incididunt aliqua. Officia occaecat deserunt in aute veniam sunt ad fugiat culpa sunt velit nulla. Pariatur anim sit minim sit duis mollit.
+Then, we remove any alarm side-effects from `findMiscreant`:
 
 ```diff
-diff --git a/src/price-order/index.js b/src/price-order/index.js
-@@ -3,6 +3,11 @@
--module.exports = old;
-+module.exports = new;
+@@ -19,11 +19,9 @@ export function alertForMiscreant(people) {
+ export function findMiscreant(people) {
+   for (const p of people) {
+     if (p === 'Don') {
+-      setOffAlarms();
+       return 'Don';
+     }
+     if (p === 'John') {
+-      setOffAlarms();
+       return 'John';
+     }
+   }
 ```
 
-And that's it!
+Finally, we can separate querying from alerting for miscreants in each caller:
+
+```diff
+@@ -1,4 +1,6 @@
+-import { alertForMiscreant } from './miscreant-handling';
++import { alertForMiscreant, findMiscreant } from './miscreant-handling';
+-const found = alertForMiscreant(['Don', 'John']);
++const people = ['Don', 'John'];
++const found = findMiscreant(people);
+ console.log(found);
++alertForMiscreant(people);
+```
+
+And then we can safely remove return values from `alertForMiscreant`:
+
+```diff
+@@ -6,14 +6,11 @@ export function alertForMiscreant(people) {
+   for (const p of people) {
+     if (p === 'Don') {
+       setOffAlarms();
+-      return 'Don';
+     }
+     if (p === 'John') {
+       setOffAlarms();
+-      return 'John';
+     }
+   }
+-  return '';
+ }
+ export function findMiscreant(people) {
+```
+
+As a last touch, we susbstitute `alertForMiscreant` logic, drastically simplifying it:
+
+```diff
+@@ -3,13 +3,8 @@ function setOffAlarms() {
+ }
+ export function alertForMiscreant(people) {
+-  for (const p of people) {
+-    if (p === 'Don') {
+-      setOffAlarms();
+-    }
+-    if (p === 'John') {
+-      setOffAlarms();
+-    }
++  if (findMiscreant(people) !== '') {
++    setOffAlarms();
+   }
+ }
+```
+
+And that's it! Querying for miscreants and alerting when they're present in the list are two separate operations now.
 
 ### Commit history
 
 Below there's the commit history for the steps detailed above.
 
-| Commit SHA                                                                                         | Message                  |
-| -------------------------------------------------------------------------------------------------- | ------------------------ |
-| [cmt-sha-1](https://github.com/kaiosilveira/separate-query-from-modifier-refactoring/commit-SHA-1) | description of commit #1 |
-| [cmt-sha-2](https://github.com/kaiosilveira/separate-query-from-modifier-refactoring/commit-SHA-2) | description of commit #2 |
-| [cmt-sha-n](https://github.com/kaiosilveira/separate-query-from-modifier-refactoring/commit-SHA-n) | description of commit #n |
+| Commit SHA                                                                                                                          | Message                                        |
+| ----------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| [fddf538](https://github.com/kaiosilveira/separate-query-from-modifier-refactoring/commit/fddf5385890fc4524e1fa2b9454020fd59a04802) | copy `alertForMiscreant` into `findMiscreant`  |
+| [e287f54](https://github.com/kaiosilveira/separate-query-from-modifier-refactoring/commit/e287f5426bd1151ecf90254cb5a1c67f2fb3c1f3) | remove alarm side-effects of `findMiscreant`   |
+| [5c74b86](https://github.com/kaiosilveira/separate-query-from-modifier-refactoring/commit/5c74b8694c72a7704bddc02a2ba038e676da6ab0) | separate querying from alerting for miscreants |
+| [edbbdd5](https://github.com/kaiosilveira/separate-query-from-modifier-refactoring/commit/edbbdd53360657600506b626f03df31e671c4619) | remove return values from `alertForMiscreant`  |
+| [21c39ff](https://github.com/kaiosilveira/separate-query-from-modifier-refactoring/commit/21c39ff27c0bf8751037936619acbeefe55bec2a) | susbstitute `alertForMiscreant` logic          |
 
 For the full commit history for this project, check the [Commit History tab](https://github.com/kaiosilveira/separate-query-from-modifier-refactoring/commits/main).
